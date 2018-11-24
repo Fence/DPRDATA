@@ -12,7 +12,17 @@ def filter_empty(str_list):
     return filter(lambda x: len(x) > 0, str_list)
 
 
+def filter_line(sents):
+    # filter out '-'{2, } strings
+    if isinstance(sents, str):
+        return re.sub(r'-{2,}', ' ', sents)
+    else:
+        return [re.sub(r'-{2,}', ' ', s) for s in sents]
+
+
 def isIngredient(sent):
+    if sent.isupper():
+        return True
     for mark in [',', '.', '?', '!','(', ')']: # ';'
         if mark in sent:
             return False
@@ -20,7 +30,12 @@ def isIngredient(sent):
 
 
 def isEndOfSent(sent):
-    return sent.isupper() or sent.startswith('Yield: ') or sent.startswith('Source: ')
+    if sent.isupper():
+        return True
+    for w in ['Yield: ', 'Note: ', 'Source: ']:
+        if sent.startswith(w):
+            return True
+    return False
 
 
 
@@ -31,15 +46,14 @@ class MainScraper(object):
         self.explanation_marks = [':', '-']
 
 
-    def convert_texts(self, filename, spliter, yield_flag, start_flag):
+    def convert_texts(self, filename, spliter, yield_flag, start_flag, output=[], save_file=''):
         data = open('RecipeDatasets/%s.mmf' % filename).read()
-        data = re.sub(r'[\x14\+\*]+', '', data)
+        data = re.sub(r'[\x14\+\*\~]+', '', data)
         texts = data.split(spliter)
         texts = [filter_empty([s.strip() for s in re.split(r'[\r\n]', t)]) for t in texts]
         texts = filter_empty(texts)
 
-        ipdb.set_trace()
-        output = []
+        #ipdb.set_trace()
         text_ind = len(texts) - 1
         while text_ind > 0:
             # read from back to front
@@ -49,16 +63,16 @@ class MainScraper(object):
                     text_ind -= 1
                     text = texts[text_ind] + text
                 
-                Title = text[1].split('Title:')[-1].strip()
+                Title = filter_line(text[1].split('Title:')[-1]).strip()
                 Categories = [c.strip() for c in text[2].split('Categories:')[1].split(',')]
-                Categories = filter_empty(Categories)
-                Yield = text[3].split('%s:' % yield_flag)[-1].strip()
+                Categories = filter_empty(filter_line(Categories))
+                Yield = filter_line(text[3].split('%s:' % yield_flag)[-1]).strip()
 
                 ind = 4
                 Ingredients = []
                 while text[ind][0].isdigit() or isIngredient(text[ind]):
                     if text[ind][-1] not in self.explanation_marks:
-                        Ingredients.append(text[ind])
+                        Ingredients.append(filter_line(text[ind]))
                     ind += 1
 
                 sent = ''
@@ -72,19 +86,23 @@ class MainScraper(object):
 
                     if isEndOfSent(sent):
                         break
+                    sent = filter_line(sent)
                     sents = filter_empty([s.strip() for s in re.split(r'[\?\!\.]', sent)])
                     Steps.extend(sents)
                     ind += 1
 
                 output.append({'Title': Title, 'Categories': Categories, 
                     'Yield': Yield, 'Ingredients': Ingredients, 'Steps': Steps})
-                print('text_ind: %d \t len(output): %d' % (text_ind, len(output)))
+                #print('text_ind: %d \t len(output): %d' % (text_ind, len(output)))
             except Exception as e:
                 print(e)
 
             text_ind -= 1
 
-        ipdb.set_trace()
+        #ipdb.set_trace()
+        print('text_ind: %d \t len(output): %d' % (text_ind, len(output)))
+        if save_file:
+            filename = save_file
         print('Saving file ...')
         with open('RecipeDatasets/%s.pkl' % filename, 'w') as f:
             pickle.dump(output, f)
@@ -95,6 +113,8 @@ class MainScraper(object):
                 f.write('Ingredients: \n\t{}\nSteps: \n\t{}\n\n'.format(
                     '\n\t'.join(t['Ingredients']), '\n\t'.join(t['Steps'])))
         print('Success!')
+
+        return output
 
     
 
@@ -141,8 +161,13 @@ class MainScraper(object):
     
 if __name__ == '__main__':
     processor = MainScraper()
-    processor.convert_texts('mm2155', '-----', 'Servings', 'Pro-Exchange')
-    processor.convert_texts('misc2600', 'MMMMM', 'Yield', '----- Recipe')
+    file = 'all_recipes'
+    output = []
+    output = processor.convert_texts('mm2155re', '-----', 'Servings', 'Pro-Exchange', output, file)
+    output = processor.convert_texts('misc2600', 'MMMMM', 'Yield', '----- Recipe', output, file)
+    for c in 'abcdefghijk':
+        output = processor.convert_texts('Mm13000%s'%c, '-----', 'Yield', 'Recipe', output, file)
+
 
 
 
