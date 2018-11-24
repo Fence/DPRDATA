@@ -359,14 +359,8 @@ class DataLabeler(object):
         self.save_file = 'wikihow/%s_%d_words' % (dom2name[self.domain], self.max_words)
         self.save_labeled_data = 'wikihow/labeled_%s_data.pkl' % dom2name[self.domain]
         self.refined_data = 'wikihow/refined_%s_data.pkl' % dom2name[self.domain]
-        # self.save_file = '%s/%s_data' % (self.domain, self.domain)
-        # self.save_labeled_data = '%s/labeled_%s_data.pkl' % (self.domain, self.domain)
-        # self.refined_data = '%s/refined_%s_data.pkl' % (self.domain, self.domain)
-    '''
-    json.dump(obj, fp, *, skipkeys=False, ensure_ascii=True, check_circular=True, 
-    allow_nan=True, cls=None, indent=None, separators=None, default=None, 
-    sort_keys=False, **kw)
-    '''
+
+
     def split_data_by_category(self):
         d1 = pickle.load(open('wikihow/wikihow_data.pkl', 'rb'))[-1]
         for key, cate_cont in d1.items():
@@ -401,9 +395,6 @@ class DataLabeler(object):
 
     def find_top_or_text_by_category(self, data, category):
         #ipdb.set_trace()
-        #print('Loading data...')
-        #data = pickle.load(open('wikihow/wikihow_data.pkl', 'rb'))[-1]
-        #garden = data['Category:Home-and-Garden']
         sub_data = data['Category:' + category]
         class_name = category.lower()
         print('Total texts of %s: %d' % (category, len(sub_data)))
@@ -419,7 +410,7 @@ class DataLabeler(object):
                 for step in detail:
                     text = re.sub(r'\[.*\]|/', '', step) # remove the content which is inside []
                     text = re.sub(r'[\n\r]', ' ', text) # change the new line symbol to blank
-                    tmp_sents = re.split(r'\. |\? |\! ', text) # split the text according to sentence marks
+                    tmp_sents = re.split(r'[\.\?\!]', text) # split the text according to sentence marks
                     for s in tmp_sents:
                         s = re.sub(r'<.*>|<*', '', s)
                         if len(s.strip().split()) > 1:
@@ -435,20 +426,16 @@ class DataLabeler(object):
 
 
     def find_top_or_text(self, class_name, texts='', infile='', topn=-1):
-        # infile = 'wikihow/wikihow_act_seq_152k_details.pkl'
-        # outfile = 'top1000_or_texts_152k.txt'
-        if texts:
+        if texts: # cope with data of texts 
             data = texts
             outfile = 'wikihow/%s_%d_words' % (class_name, self.max_words)
-        else:
+        else: # load data from existing files
             data = pickle.load(open(infile, 'rb'))
         
         or_dicts = {}
         for i, text in enumerate(data):
-            #if len(text['sent']) > 40:
-            #    continue
             if sum([len(s.split()) for s in text['sent']]) > self.max_words:
-                continue
+                continue # skip texts that contains too many words
             for sent in text['sent']:
                 words = sent.split()
                 if 'or' in words or 'Or' in words:
@@ -467,12 +454,10 @@ class DataLabeler(object):
                 text = data[idx[0]]['sent']
                 sents = [re.sub(r',|;|:|\.|', '', s) for s in text]
                 texts.append(sents)
-                f.write('text: %d\n' % idx[0])
+                f.write('Text: %d\n' % idx[0])
                 if 'title' in data[idx[0]]:
-                    f.write('title: %s\n' % data[idx[0]]['title'])
-                for j, sent in enumerate(text):
-                    f.write('No%d: %s\n' % (j, sent))
-                f.write('\n\n')
+                    f.write('Title: {}\nSteps: \n\t{}\n\n'.format(
+                        data[idx[0]]['title'], '\n\t'.join(text)))
 
         print('Saving data to %s' % outfile)
         if self.data_type == 'pkl':
@@ -1015,7 +1000,8 @@ class DataLabeler(object):
                         if not inputs:
                             break
                         ipdb.set_trace()
-                        # input contains at least three numbers, indicating action type, action index and object indices
+                        # input contains at least three numbers, 
+                        # indicating action type, action index and object indices
                         nums = inputs.split()
                         if len(nums) <= 2:
                             if act == 'q':
