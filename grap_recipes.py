@@ -15,17 +15,19 @@ def filter_empty(str_list):
 def filter_line(sents):
     # filter out '-'{2, } strings
     if isinstance(sents, str):
-        return re.sub(r'-{2,}', ' ', sents)
+        return re.sub(r'-{1,}|[\(\)]', ' ', sents)
     else:
-        return [re.sub(r'-{2,}', ' ', s) for s in sents]
+        return [re.sub(r'-{1,}|[\(\)]', ' ', s) for s in sents]
 
 
 def isIngredient(sent):
-    if sent.isupper():
+    if sent == ' ' or sent.isupper():
         return True
-    for mark in [',', '.', '?', '!','(', ')']: # ';'
+    for mark in [',', '.', '?', '!']:
         if mark in sent:
             return False
+    if sent.split() > 5:
+        return False
     return True
 
 
@@ -43,12 +45,11 @@ class MainScraper(object):
     """docstring for MainScraper"""
     def __init__(self):
         self.EOS = ['.', '?', '!']
-        self.explanation_marks = [':', '-']
 
 
     def convert_texts(self, filename, spliter, yield_flag, start_flag, output=[], save_file=''):
         data = open('RecipeDatasets/%s.mmf' % filename).read()
-        data = re.sub(r'[\x14\+\*\~]+', '', data)
+        data = re.sub(r'[\x14\+\*\~\#]+', '', data)
         texts = data.split(spliter)
         texts = [filter_empty([s.strip() for s in re.split(r'[\r\n]', t)]) for t in texts]
         texts = filter_empty(texts)
@@ -70,13 +71,23 @@ class MainScraper(object):
 
                 ind = 4
                 Ingredients = []
-                while text[ind][0].isdigit() or isIngredient(text[ind]):
-                    if text[ind][-1] not in self.explanation_marks:
-                        Ingredients.append(filter_line(text[ind]))
-                    ind += 1
+                num_sents = len(text) - 1
+                mater = filter_line(text[ind])
+                while mater[0].isdigit() or isIngredient(mater):
+                    if len(mater) >= 2 and mater[1] == '.':
+                        break
+                    if mater[0].isdigit() and len(mater.split()) == 2 and ind < num_sents:
+                        ind += 1
+                        mater = mater + ' ' + filter_line(text[ind])
+                    if len(mater) > 1 and mater[-1] != ':':
+                        Ingredients.append(mater)
+                    if ind < num_sents:
+                        ind += 1
+                        mater = filter_line(text[ind])
+                    else:
+                        break
 
                 sent = ''
-                num_sents = len(text) - 1
                 Steps = []
                 while ind < num_sents:
                     sent = text[ind]
@@ -90,12 +101,13 @@ class MainScraper(object):
                     sents = filter_empty([s.strip() for s in re.split(r'[\?\!\.]', sent)])
                     Steps.extend(sents)
                     ind += 1
-
-                output.append({'Title': Title, 'Categories': Categories, 
-                    'Yield': Yield, 'Ingredients': Ingredients, 'Steps': Steps})
-                #print('text_ind: %d \t len(output): %d' % (text_ind, len(output)))
+                if len(Steps) > 0:
+                    output.append({'Title': Title, 'Categories': Categories, 
+                        'Yield': Yield, 'Ingredients': Ingredients, 'Steps': Steps})
+                    #print('text_ind: %d \t len(output): %d' % (text_ind, len(output)))
             except Exception as e:
-                print(e)
+                #print(e)
+                pass
 
             text_ind -= 1
 
@@ -161,6 +173,7 @@ class MainScraper(object):
     
 if __name__ == '__main__':
     processor = MainScraper()
+    #ipdb.set_trace()
     file = 'all_recipes'
     output = []
     output = processor.convert_texts('mm2155re', '-----', 'Servings', 'Pro-Exchange', output, file)
