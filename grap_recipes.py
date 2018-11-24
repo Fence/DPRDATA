@@ -3,7 +3,6 @@ import ipdb
 import json
 import pickle
 import numpy as np
-from selenium import webdriver
 from utils import timeit
 
 
@@ -26,7 +25,8 @@ def isIngredient(sent):
     for mark in [',', '.', '?', '!']:
         if mark in sent:
             return False
-    if sent.split() > 5:
+    # it's possible a step if the sentence contains more than 5 words 
+    if sent.split() > 5: 
         return False
     return True
 
@@ -48,8 +48,9 @@ class MainScraper(object):
 
 
     def convert_texts(self, filename, spliter, yield_flag, start_flag, output=[], save_file=''):
+        # convert *.mmf file to structured data={Title, Categories, Yield, Ingredients, Steps}
         data = open('RecipeDatasets/%s.mmf' % filename).read()
-        data = re.sub(r'[\x14\+\*\~\#]+', '', data)
+        data = re.sub(r'[\x14\+\*\~\#]+', '', data) # remove the explanation marks
         texts = data.split(spliter)
         texts = [filter_empty([s.strip() for s in re.split(r'[\r\n]', t)]) for t in texts]
         texts = filter_empty(texts)
@@ -57,7 +58,7 @@ class MainScraper(object):
         #ipdb.set_trace()
         text_ind = len(texts) - 1
         while text_ind > 0:
-            # read from back to front
+            # read from back to front, start_flag is a flag indicating the start of a recipe
             try:
                 text = texts[text_ind]
                 while not text[0].startswith(start_flag) and text_ind > 0:
@@ -74,7 +75,7 @@ class MainScraper(object):
                 num_sents = len(text) - 1
                 mater = filter_line(text[ind])
                 while mater[0].isdigit() or isIngredient(mater):
-                    if len(mater) >= 2 and mater[1] == '.':
+                    if len(mater) >= 2 and mater[1] == '.': # these are sentences of steps
                         break
                     if mater[0].isdigit() and len(mater.split()) == 2 and ind < num_sents:
                         ind += 1
@@ -90,10 +91,10 @@ class MainScraper(object):
                 sent = ''
                 Steps = []
                 while ind < num_sents:
-                    sent = text[ind]
+                    sent = text[ind] # some sentences are split by \n becuase it's too long
                     while sent[-1] not in self.EOS and ind < num_sents:
                         ind += 1
-                        sent = sent + ' ' + text[ind]
+                        sent = sent + ' ' + text[ind] # join them together
 
                     if isEndOfSent(sent):
                         break
@@ -113,7 +114,7 @@ class MainScraper(object):
 
         #ipdb.set_trace()
         print('text_ind: %d \t len(output): %d' % (text_ind, len(output)))
-        if save_file:
+        if save_file: # save data from different *.mmf files to a single file
             filename = save_file
         print('Saving file ...')
         with open('RecipeDatasets/%s.pkl' % filename, 'w') as f:
@@ -131,6 +132,7 @@ class MainScraper(object):
     
 
     def load_driver(self):
+        from selenium import webdriver
         self.driver = webdriver.Chrome('~/Desktop/chromedriver')
 
 
