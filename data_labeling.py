@@ -19,10 +19,10 @@ class TextParsing(object):
     def __init__(self):
         from nltk.stem import WordNetLemmatizer
         from nltk.parse.stanford import StanfordDependencyParser
-        core = '/home/fengwf/stanford/stanford-corenlp-3.7.0.jar'
-        model = '/home/fengwf/stanford/english-models.jar'
+        core = '/Users/fengwf/stanford/stanford-corenlp-3.7.0.jar'
+        model = '/Users/fengwf/stanford/english-models.jar'
         self.dep_parser = StanfordDependencyParser(path_to_jar=core, path_to_models_jar=model,
-                        encoding='utf8', java_options='-mx2000m')
+                                                    encoding='utf8', java_options='-mx2000m')
         self.lemma = WordNetLemmatizer()
             
 
@@ -62,7 +62,7 @@ class TextParsing(object):
 
 
     def stanford_find_vp_details(self, indata_name, outdata_name):
-
+        # extract action sequences from task details by Stanford Dependency Parser
         data = []
         with open(indata_name, 'rb') as f0:
             indata = pickle.load(f0)[-1]
@@ -114,7 +114,7 @@ class TextParsing(object):
                                 dep_root = next(dep)
                                 dep_sent = next(dep_root)
                             except StopIteration:
-                                print('j = %d len(sents) = %d Raise StopIteration.\n' % (j, len(sents)))
+                                print('j: %d sents: %d Raise StopIteration.\n' % (j, len(sents)))
                                 break
                             conll = [_.split() for _ in str(dep_sent.to_conll(10)).split('\n') if _]
                             words = []
@@ -157,10 +157,9 @@ class TextParsing(object):
 
 
     def stanford_find_vp(self, indata_name, outdata_name):
-
+        # extract action sequences from sub-tasks by Stanford Dependency Parser
         num_texts = 124 # 96 #
         source = 'wikihow/new_details/' #'ehow/out_data/' # 'cooking/out_data/' #
-        #save_name = 'wikihow/wikihow_act_seq_100k' # 'ehow/ehow_act_seq' # 'cooking/cooking_act_seq' #
         data = []
         #ipdb.set_trace()
         with open(indata_name, 'rb') as f0:
@@ -215,7 +214,7 @@ class TextParsing(object):
                                 dep_root = next(dep)
                                 dep_sent = next(dep_root)
                             except StopIteration:
-                                print('j = %d len(sents) = %d Raise StopIteration.\n' % (j, len(sents)))
+                                print('j: %d sents: %d Raise StopIteration.\n' % (j, len(sents)))
                                 break
                             conll = [_.split() for _ in str(dep_sent.to_conll(10)).split('\n') if _]
                             words = []
@@ -361,9 +360,8 @@ class DataLabeler(object):
         self.refined_data = 'wikihow/refined_%s_data.pkl' % dom2name[self.domain]
 
 
-    def split_data_by_category(self):
-        d1 = pickle.load(open('wikihow/wikihow_data.pkl', 'rb'))[-1]
-        for key, cate_cont in d1.items():
+    def split_data_by_category(self, data):
+        for key, cate_cont in data.items():
             print(key)
             texts = []
             for ind in tqdm(range(len(cate_cont))):
@@ -408,9 +406,12 @@ class DataLabeler(object):
             for i, detail in enumerate(page['detail']):
                 sents = []
                 for step in detail:
-                    text = re.sub(r'\[.*\]|/', '', step) # remove the content which is inside []
-                    text = re.sub(r'[\n\r]', ' ', text) # change the new line symbol to blank
-                    tmp_sents = re.split(r'[\.\?\!]', text) # split the text according to sentence marks
+                    # remove the content which is inside []
+                    text = re.sub(r'\[.*\]|/', '', step) 
+                    # change the new line symbol to blank
+                    text = re.sub(r'[\n\r]', ' ', text) 
+                    # split the text according to sentence marks
+                    tmp_sents = re.split(r'[\.\?\!]', text) 
                     for s in tmp_sents:
                         s = re.sub(r'<.*>|<*', '', s)
                         if len(s.strip().split()) > 1:
@@ -1115,10 +1116,12 @@ if __name__ == '__main__':
     start = time.time()
     model = DataLabeler(args)
     if args.model_type == 'category':
-        model.split_data_by_category()
         print('Loading data ...')
         data = pickle.load(open('wikihow/wikihow_data.pkl', 'rb'))[-1]
-        for category in ['Home-and-Garden', 'Cars-%26-Other-Vehicles', 'Computers-and-Electronics']:
+        # model.split_data_by_category(data)
+        names = ['Food-and-Entertaining', 'Home-and-Garden', 
+                'Cars-%26-Other-Vehicles', 'Computers-and-Electronics']
+        for category in names:
             model.find_top_or_text_by_category(data, category)
     else:
         # call the function according to the function name
