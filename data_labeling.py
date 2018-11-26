@@ -168,8 +168,6 @@ class TextParsing(object):
             print('Loading data...')
             data = pickle.load(open('%s.pkl' % outdata_name, 'rb'))
             print('len(data) = %d' % len(data))
-        #for i in range(num_texts):
-        #for name in os.listdir(source):
         try:
             count = 0
             for cate in indata:
@@ -186,11 +184,6 @@ class TextParsing(object):
                         tmp_data['sent'] = []
                         tmp_data['act_seq'] = []
                         tmp_data['dep_conll'] = []
-                        #fname = '%s%d.txt' % (source, i + 1)
-                        #fname = source + name
-                        #print(fname)
-                        #try:
-                        #text = open(fname).read()
                         text = re.sub(r'/', ' ', text)
                         sents = text.split('\n') #.readlines()
                         try:
@@ -221,9 +214,6 @@ class TextParsing(object):
                             idx2word = {}
                             for w in conll:
                                 idx2word[w[0]] = w[1]
-                                #word_lemma = self.lemma.lemmatize(w[1])
-                                #if word_lemma == 'pythonly':
-                                #    word_lemma = w[1]
                                 words.append(w[1]) #word_lemma
                             tmp_data['sent'].append(' '.join(words))
                             tmp_data['dep_conll'].append(conll)
@@ -997,7 +987,7 @@ class DataLabeler(object):
                         print('%s(%d)'%(w, l), end=' ')
                     
                     while True:
-                        inputs = input('\nInput an action and object indices:\n')
+                        inputs = input('\nInput an action and object indices:\n').strip()
                         if not inputs:
                             break
                         ipdb.set_trace()
@@ -1005,9 +995,9 @@ class DataLabeler(object):
                         # indicating action type, action index and object indices
                         nums = inputs.split()
                         if len(nums) <= 2:
-                            if act == 'q':
+                            if inputs == 'q':
                                 raise QuitProgram()
-                            elif act == 'r': # revise a sent
+                            elif inputs == 'r': # revise a sent
                                 print(' '.join(sent['this_sent']))
                                 text[j] = input('Input right sentence\n')
                                 sent['this_sent'] = text[j].strip().split()

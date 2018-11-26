@@ -3,9 +3,10 @@ import os
 import ipdb
 import json
 import pickle
+import argparse
 import numpy as np
 from tqdm import tqdm
-from utils import timeit
+from utils import timeit, print_args, QuitProgram
 
 
 def transform_digits(sent):
@@ -105,70 +106,107 @@ class MainScraper(object):
                     '13': ['-----', 'Yield:', 'Recipe']}
 
 
-    def build_dict(self):
+    def build_dict(self, key_name):
         from nltk.parse.stanford import StanfordDependencyParser
         core = '/Users/fengwf/stanford/stanford-corenlp-3.7.0.jar'
         model = '/Users/fengwf/stanford/english-models.jar'
-        parser = StanfordDependencyParser(path_to_jar=core, path_to_models_jar=model,
-                                            encoding='utf8', java_options='-mx2000m')
+        self.parser = StanfordDependencyParser(path_to_jar=core, path_to_models_jar=model,
+                                                encoding='utf8', java_options='-mx2000m')
         print('Loading data ...')
         data = pickle.load(open('RecipeDatasets/all_mm_recipes.pkl'))
         objs = {}
         adjs = {}
         vbds = {}
         all_sents = [] 
-        print('Processing Ingredients ...')
+        print('Processing %s ...' % key_name)
         #ipdb.set_trace()
         for i in tqdm(xrange(len(data))):
             text = data[i]
-            sents = [transform_digits(i.lower()) for i in text['Ingredients']]
+            sents = [transform_digits(i.lower()) for i in text[key_name]]
             try:
-                dep = parser.raw_parse_sents(sents)
-                for ind in xrange(len(sents)):
-                    concurrent_sent = [[], [], []] # NN, JJ, VBD/VBN/VBG
-                    lines = [l.split() for l in str(dep.next().next().to_conll(10)).split('\n')]
-                    for line in lines:
-                        try:
-                            ind, word, pos, component = line[0], line[1], line[3], line[7]
-                            if len(word) <= 2: # words of units (e.g. x, T, ds etc.)
-                                continue
-                            if pos in ['NN', 'NNS', 'NNP', 'NNPS']:
-                                concurrent_sent[0].append(word)
-                                if word in objs:
-                                    objs[word] += 1
-                                else:
-                                    objs[word] = 1
-                            elif pos in ['JJ', 'JJR', 'JJS']:
-                                concurrent_sent[1].append(word)
-                                if word in adjs:
-                                    adjs[word] += 1
-                                else:
-                                    adjs[word] = 1
-                            elif pos in ['VBD', 'VBN', 'VBG']:
-                                concurrent_sent[2].append(word)
-                                if word in vbds:
-                                    vbds[word] += 1
-                                else:
-                                    vbds[word] = 1
-                        except KeyboardInterrupt:
-                            raise KeyboardInterrupt
-                        except: # end of the line or not enough components
-                            #ipdb.set_trace()
-                            pass
-                    all_sents.append(concurrent_sent)
+                if key_name == 'Steps':
+                    self.parse_steps(sents, all_sents)
+                else:
+                    self.parse_ingredients(sents, all_sents)
             except AssertionError:
                 continue
             except KeyboardInterrupt:
                 break
-        #ipdb.set_trace()
-        with open('RecipeDatasets/obj_dict.pkl', 'w') as f:
-            print('\n Saving file ...')
-            pickle.dump({'objs': objs, 'adjs': adjs, 'vbds': vbds, 'all_sents': all_sents}, f)
-            print(' Success!\n')
+            except:
+                continue
+        
+        if key_name == 'Steps':
+            with open('RecipeDatasets/steps_dependency.pkl', 'w') as f:
+                print('\n Saving file ...')
+                pickle.dump(all_sents, f)
+                print(' Success!\n')
+        else:
+            with open('RecipeDatasets/obj_dict.pkl', 'w') as f:
+                print('\n Saving file ...')
+                pickle.dump({'objs': objs, 'adjs': adjs, 'vbds': vbds, 'all_sents': all_sents}, f)
+                print(' Success!\n')
 
 
+    def parse_ingredients(self, sents, all_sents):
+        dep = self.parser.raw_parse_sents(sents)
+        for ind in xrange(len(sents)):
+            concurrent_sent = [[], [], []] # NN, JJ, VBD/VBN/VBG
+            lines = [l.split() for l in str(dep.next().next().to_conll(10)).split('\n')]
+            for line in lines:
+                try:
+                    ind, word, pos, component = line[0], line[1], line[3], line[7]
+                    if len(word) <= 2: # words of units (e.g. x, T, ds etc.)
+                        continue
+                    if pos in ['NN', 'NNS', 'NNP', 'NNPS']:
+                        concurrent_sent[0].append(word)
+                        if word in objs:
+                            objs[word] += 1
+                        else:
+                            objs[word] = 1
+                    elif pos in ['JJ', 'JJR', 'JJS']:
+                        concurrent_sent[1].append(word)
+                        if word in adjs:
+                            adjs[word] += 1
+                        else:
+                            adjs[word] = 1
+                    elif pos in ['VBD', 'VBN', 'VBG']:
+                        concurrent_sent[2].append(word)
+                        if word in vbds:
+                            vbds[word] += 1
+                        else:
+                            vbds[word] = 1
+                except KeyboardInterrupt:
+                    raise KeyboardInterrupt
+                except: # end of the line or not enough components
+                    continue
+            all_sents.append(concurrent_sent)
 
-    def convert_texts(self, filename, output=[], outfile='', save_file=True):
+
+    def parse_steps(self, sents, all_sents):
+        # save all dependency results of text['Steps'] to file
+        dep = self.parser.raw_parse_sents(sents)
+        dep_list = []
+        #words_list = []
+        for ind in xrange(len(sents)):
+            lines = [l.split() for l in str(dep.next().next().to_conll(10)).split('\n')]
+            lines = filter_empty(lines)
+            #words = [' '] * (int(lines[-1][0]) + 1)
+            dependency = []
+            for line in lines:
+                try:
+                    dependency.append([line[0], line[1], line[3], line[6], line[7]])
+                    #words[int(line[0])] = line[1]
+                except KeyboardInterrupt:
+                    raise KeyboardInterrupt
+                except: # end of the line or not enough components
+                    continue
+            dep_list.append(dependency)
+            #words_list.append(words)
+        #all_sents.append({'words': words_list, 'dep': dep_list})
+        all_sents.append(dep_list)
+
+
+    def convert_texts(self, filename, output=[], outfile='', save_file=False):
         # convert *.mmf file to structured data={Title, Categories, Yield, Ingredients, Steps}
         #ipdb.set_trace()
         print('Processing file: %s' % filename)
@@ -279,14 +317,26 @@ class MainScraper(object):
         return output
 
     
+    def convert_texts_main(self, convert_mode):
+        output = []
+        home = 'RecipeDatasets/mmf_files/'
+        outfile = 'RecipeDatasets/%s_recipes' % convert_mode
+        if convert_mode == 'all':
+            files = [f for f in os.listdir(home) if f.endswith('.mmf')]
+            max_file_ind = len(files) - 1
+            for i, name in enumerate(files):
+                save_file = False if i < max_file_ind else True
+                output = self.convert_texts(home + name, output, outfile, save_file)
+        else:
+            for c in 'abcdefghijk':
+                output = self.convert_texts('Mm13000%s.mmf' % c, output, outfile)
+            output = self.convert_texts('mm2155re.mmf', output, outfile)
+            output = self.convert_texts('misc2600.mmf', output, outfile, save_file=True)
+
 
     def load_driver(self):
         from selenium import webdriver
         self.driver = webdriver.Chrome('~/Desktop/chromedriver')
-
-
-    def get_recipes_pages(self):
-        pass
 
 
     def get_text_from_page(self, url):
@@ -321,24 +371,286 @@ class MainScraper(object):
         return {'Title': Title, 'Categories': Categories, 'Yield': Yield, 
                 'Ingredients': Ingredients, 'Steps': Steps}
 
+
+
+class TextLabeler(object):
+    """docstring for TextLabeler"""
+    def __init__(self, args):
+        self.domain = args.domain
+        self.num_texts = args.num_texts
+        self.int2type = {1: 'essential', 2: 'optional', 3: 'exclusive'}
+        filename = '%s_black_list.txt' % args.domain
+        if os.path.exists(filename):
+            self.black_list = map(int, open(filename).read().split())
+        else:
+            self.black_list = []
+        if args.domain == 'recipe':
+            self.input_file = 'RecipeDatasets/all_mm_recipes.pkl'
+            self.save_labeled_data = 'RecipeDatasets/recipes_labeled_data.pkl'
+        else:
+            dom2name = {'car': 'cars-%26-other-vehicles',
+                    'home': 'home-and-garden',
+                    'food': 'food-and-entertaining',
+                    'computer': 'computers-and-electronics',
+                    }
+            self.input_file = 'wikihow/%s_500_words' % dom2name[args.domain]
+            self.save_labeled_data = 'wikihow/labeled_%s_data.pkl' % dom2name[args.domain]
+        
+
+
+    def text_labeling(self):
+        # main function for annotating the texts
+        print('\nLoad data from %s...\n' % self.input_file)
+        texts = pickle.load(open(self.input_file))
+        for ind in self.black_list:
+            texts.pop(ind)
+
+        if os.path.exists(self.save_labeled_data):
+            with open(self.save_labeled_data, 'rb') as f:
+                print('Load data from %s...\n' % self.save_labeled_data)
+                last_text, last_sent, data = pickle.load(f)
+                print('last_text: %d\t last_sent: %d\n' % (last_text, last_sent))
+            while True:
+                init = raw_input('Input last text num and sent num\n')
+                if not init:
+                    print('No input, program exit!\n')
+                if len(init.split()) == 2:
+                    start_text = int(init.split()[0])
+                    start_sent = int(init.split()[1])
+                    break
+            ipdb.set_trace()
+        else:
+            start_text = start_sent = 0
+            data = [[] for _ in range(self.num_texts)]
+        
+        for i in range(start_text, self.num_texts):
+            text = texts[i]['Steps'] if self.domain == 'recipe' else texts[i]
+            #text = [re.sub(r'[,;]', '', s.lower()).split() for s in text]
+            text = [transform_digits(s) for s in text]
+            num_sents = len(text)
+            print('\ntext %d: total %d words\n' % (i, sum([len(t) for t in text])))
+            if len(data[i]) > 0: #self.domain != 'cooking' and i == start_text and 
+                sents = data[i]
+            else:
+                sents = [{} for _ in range(num_sents)]
+            try:
+                if i != start_text:
+                    start_sent = 0       
+                for j in range(start_sent, num_sents):
+                    sent = {}
+                    this_sent = text[j]
+                    # print two sentences, used for coreference resolution
+                    last_sent = text[j - 1] if j > 0 else ''
+                    next_sent = text[j + 1] if j < num_sents - 1 else ''
+                    sent['last_sent'] = re.sub(r'[,;]', '', last_sent.lower()).split()
+                    sent['this_sent'] = re.sub(r'[,;]', '', this_sent.lower()).split()
+                    sent['next_sent'] = re.sub(r'[,;]', '', next_sent.lower()).split()
+                    sent['acts'] = []
+                    raw_words = [s.split() for s in [last_sent, this_sent, next_sent]]
+                    words = sent['last_sent'] + sent['this_sent'] + sent['next_sent']
+                    assert len(words) == sum([len(s) for s in raw_words])
+                    print('T%d of %d, S%d of %d:' % (i, self.num_texts, j, num_sents))
+                    ind = self.print_sent(raw_words[0], 0, 'LAST')
+                    ind = self.print_sent(raw_words[1], ind, 'THIS')
+                    ind = self.print_sent(raw_words[2], ind, 'NEXT')
+
+                    sent = self.label_a_sent(sent, words, raw_words)
+                    if len(sents) < num_sents:
+                        sents.append({})
+                    sents[j] = sent
+            
+            except Exception as e:
+                print('Error:', e)
+                if len(data) < self.num_texts:
+                    data.append([])
+                data[i] = sents
+                with open(self.save_labeled_data, 'wb') as f:
+                    pickle.dump([i, j, data], f)
+                    break_flag = True
+                    print('last_text: %d\t last_sent: %d\n' % (i, j))
+                    break
+            if len(data) < self.num_texts:
+                    data.append([])
+            data[i] = sents
+        
+        # save file
+        with open(self.save_labeled_data, 'wb') as f:
+            pickle.dump([i, j, data], f, protocol=2)
+            break_flag = True
+            print('last_text: %d\t last_sent: %d\n' % (i, j))
+
+
+    def print_sent(self, sent, ind, flag):
+        print('%s: ' % flag),
+        for w in sent:
+            print('%s(%d)'%(w, ind)),
+            ind += 1
+        print('')
+        return ind
+
+
+    def label_a_sent(self, sent, words, raw_words):
+        num_words = len(words)
+        while True:
+            inputs = raw_input('\nInput an action and object indices:\n').strip()
+            if not inputs:
+                break
+            #ipdb.set_trace()
+            # input contains at least three numbers, 
+            # indicating action type, action index and object indices
+            nums = inputs.split()
+            if len(nums) <= 2:
+                if inputs == 'q':
+                    raise QuitProgram()
+                elif inputs == 'r': # revise a sent
+                    print(' '.join(sent['this_sent']))
+                    text[j] = input('Input right sentence\n').strip()
+                    sent['this_sent'] = re.sub(r'[,;]', '', text[j].lower()).split()
+                    words = sent['last_sent'] + sent['this_sent'] + sent['next_sent']
+                    ind = self.print_sent(raw_words[0], 0, 'LAST')
+                    ind = self.print_sent(text[j], ind, 'THIS')
+                    ind = self.print_sent(raw_words[2], ind, 'NEXT')
+                    continue
+                else:
+                    continue
+
+            # cope with the action type
+            act_type = int(nums[0])
+            if act_type not in [1, 2, 3]: # essential, optional, exclusive
+                print('Wrong act_type!')
+                continue
+            if act_type == 3:
+                related_acts = input('Enter its related actions (indices):\n')
+                related_acts = [int(r) for r in related_acts.split()]
+                if len(related_acts) == 0:
+                    print('You should input related_acts!\n')
+                    continue
+                print('\tRelated actions: {}'.format([words[idx] for idx in related_acts]))
+            else:
+                related_acts = []
+
+            # cope with the indices of the objects
+            act_idx = int(nums[1])
+            if act_idx >= num_words:
+                print('action index %d out of range' % act_idx)
+                continue
+            obj_idxs = [[], []]
+            continue_flag = False
+            # Add essential object indices
+            for idx in map(int, nums[2].split(',')):
+                if idx >= num_words:
+                    print('object index %d out of range' % idx)
+                    continue_flag = True
+                    break
+                obj_idxs[0].append(idx)
+            if continue_flag:
+                continue
+            # Add exclusive object indices if necessary
+            if len(nums) >= 4:
+                for idx in map(int, nums[3].split(',')):
+                    if idx >= num_words:
+                        print('object index %d out of range' % idx)
+                        continue_flag = True
+                        break
+                    obj_idxs[1].append(idx)
+            if continue_flag:
+                continue
+            
+            # map the indices of the objects to the corresponding words
+            obj_names = []
+            for k in obj_idxs[0]:
+                if k >= 0:
+                    obj_names.append(words[k])
+                else:
+                    obj_names.append('NULL')
+            obj_names = ','.join(obj_names)
+            print('\t act_type: %s' % self.int2type[act_type])
+            print('\t %s(%s)' % (words[act_idx], obj_names))
+            if obj_idxs[1]:
+                obj_names = []
+                for k in obj_idxs[1]:
+                    if k >= 0:
+                        obj_names.append(words[k])
+                    else:
+                        obj_names.append('NULL')
+                obj_names = ','.join(obj_names)
+                print('\t %s(%s)' % (words[act_idx], obj_names))
+            
+
+            state = self.next_state(words[act_idx], obj_idxs, words)
+            sent['acts'].append({'act_idx': act_idx, 'obj_idxs': obj_idxs, 'state': state,
+                                'act_type': act_type, 'related_acts': related_acts})
+        return sent
+        
+
+    def next_state(self, act, obj_idxs, words):
+        #ipdb.set_trace()
+        inputs = raw_input('\n\t Input the new state after the action:\n')
+        if not inputs:
+            return []
+        inputs = inputs.strip().split()
+        state_type = int(inputs[0])
+        objs = [[words[i] for i in obj_idxs[j]] for j in range(len(obj_idxs))]
+        # vbn + obj
+        if state_type == 1: 
+            try:
+                vbn = en.verb.past_participle(act)
+            except:
+                vbn = raw_input('\n\t Key Error! Input the past participle of "%s":\n' % act).strip()
+                if vbn in ['ed', 'n', 'd']:
+                    vbn = act + vbn
+            state = [[vbn, '_'.join(obj)] for obj in objs if obj]
+            for i in range(len(state)):
+                print('\t  %s(%s)' % (state[i][0], state[i][1]))
+        # preposition + obj1 + obj2
+        elif state_type == 2: 
+            prep, obj2 = inputs[1: ]
+            state = [[prep, obj2, '_'.join(obj)] for obj in objs if obj]
+            for i in range(len(state)):
+                print('\t  %s(%s, %s)' % (state[i][0], state[i][1], state[i][2]))
+        # new objects
+        elif state_type == 3:
+            state = [[inputs[1]]]
+            print('\t  new obj: %s' % state)
+        # new objects + preposition
+        else:
+            prep, obj2, new_obj = inputs[1: ]
+            if isinstance(new_obj, list):
+                state = [[prep, obj2, '_'.join(new_obj)]]
+            else:
+                state = [[prep, obj2, new_obj]]
+            for i in range(len(state)):
+                print('\t  new obj: %s(%s, %s)' % (state[i][0], state[i][1], state[i][2]))
+        return state
+
+
+
     
 if __name__ == '__main__':
-    processor = MainScraper()
-    #ipdb.set_trace()
-    processor.build_dict()
-
-    # outfile = 'RecipeDatasets/all_recipes'
-    # output = []
-    # # output = processor.convert_texts('mm2155re', output, outfile)
-    # # output = processor.convert_texts('misc2600', output, outfile)
-    # # for c in 'abcdefghijk':
-    # #     output = processor.convert_texts('Mm13000%s'%c, output, outfile)
-    # home = 'RecipeDatasets/mmf_files/'
-    # files = [f for f in os.listdir(home) if f.endswith('.mmf')]
-    # max_file_ind = len(files) - 1
-    # for i, name in enumerate(files):
-    #     save_file = False if i < max_file_ind else True
-    #     output = processor.convert_texts(home + name, output, outfile, save_file)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--domain',         type=str,   default='recipe',       help='')
+    parser.add_argument('--model',          type=str,   default='labeling',     help='')
+    parser.add_argument('--function',       type=str,   default='build_dict',   help='')
+    parser.add_argument('--convert_mode',   type=str,   default='all_mm',       help='')
+    parser.add_argument('--key_name',       type=str,   default='Steps',        help='')
+    parser.add_argument('--num_texts',      type=int,   default=1000,           help='')
+    parser.add_argument('--max_words',      type=int,   default=500,            help='')
+    args = parser.parse_args()
+    print_args(args)
+    
+    if args.model == 'scrap':
+        processor = MainScraper()
+        #ipdb.set_trace()
+        if args.function == 'build_dict':
+            processor.build_dict(args.key_name)
+        else:
+            processor.convert_texts_main(args.convert_mode)
+    
+    # else args.model is used for text_labeling
+    else:
+        import en
+        model = TextLabeler(args)
+        model.text_labeling()
 
 
 

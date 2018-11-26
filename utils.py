@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 plt.switch_backend('agg') # do not require GUI
 
 
+class QuitProgram(Exception):
+    def __init__(self, message='Quit the program.\n'):
+        Exception.__init__(self)
+        self.message = message
+
+
 def timeit(f):
     def timed(*args, **kwargs):
         start_time = time.time()
@@ -16,6 +22,18 @@ def timeit(f):
         print("   [-] %s : %2.5f sec" % (f.__name__, end_time - start_time))
         return result
     return timed
+
+
+def print_args(args, outfile=''):
+    print('\n Arguments:')
+    for k, v in sorted(args.__dict__.items(), key=lambda x:x[0]):
+        print('{}: {}'.format(k, v))
+    if outfile:
+        outfile.write('\n Arguments:\n')
+        for k, v in sorted(args.__dict__.items(), key=lambda x:x[0]):
+            outfile.write('{}: {}\n'.format(k, v))
+        outfile.write('\n')
+    
 
 
 def str2bool(v):
