@@ -434,27 +434,20 @@ class TextLabeler(object):
                         obj_idxs = data[i][j]['acts'][k]['obj_idxs']
                         act_type = data[i][j]['acts'][k]['act_type']
                         # map the indices of the objects to the corresponding words
-                        obj_names = []
-                        for l in obj_idxs[0]:
-                            if l >= 0:
-                                obj_names.append(words[l])
-                            else:
-                                obj_names.append('NULL')
-                        obj_names = ','.join(obj_names)
-                        print('\t act_type: %s' % self.int2type[act_type])
-                        print('\t %s(%s)' % (words[act_idx], obj_names))
-                        if obj_idxs[1]:
-                            obj_names = []
-                            for l in obj_idxs[1]:
-                                if l >= 0:
-                                    obj_names.append(words[l])
+                        obj_names = [[], []]
+                        for l in range(2):
+                            for m in obj_idxs[l]:
+                                if m >= 0:
+                                    obj_names[l].append(words[m])
                                 else:
-                                    obj_names.append('NULL')
-                            obj_names = ','.join(obj_names)
-                            print('\t %s(%s)' % (words[act_idx], obj_names))    
+                                    obj_names[l].append('NULL')
+                        print('\t act_type: %s' % self.int2type[act_type])
+                        print('\t %s(%s)' % (words[act_idx], ','.join(obj_names[0])))
+                        if obj_idxs[1]:
+                            print('\t %s(%s)' % (words[act_idx], ','.join(obj_names[1])))    
 
                         # add state transition
-                        state, state_type = self.next_state(words[act_idx], obj_idxs, words)
+                        state, state_type = self.next_state(words[act_idx], obj_idxs, obj_names)
                         data[i][j]['acts'][k]['state'] = state
                         data[i][j]['acts'][k]['state_type'] = state_type
                 except:
@@ -628,41 +621,33 @@ class TextLabeler(object):
                 continue
             
             # map the indices of the objects to the corresponding words
-            obj_names = []
-            for k in obj_idxs[0]:
-                if k >= 0:
-                    obj_names.append(words[k])
-                else:
-                    obj_names.append('NULL')
-            obj_names = ','.join(obj_names)
-            print('\t act_type: %s' % self.int2type[act_type])
-            print('\t %s(%s)' % (words[act_idx], obj_names))
-            if obj_idxs[1]:
-                obj_names = []
-                for k in obj_idxs[1]:
-                    if k >= 0:
-                        obj_names.append(words[k])
+            obj_names = [[], []]
+            for l in range(2):
+                for m in obj_idxs[l]:
+                    if m >= 0:
+                        obj_names[l].append(words[m])
                     else:
-                        obj_names.append('NULL')
-                obj_names = ','.join(obj_names)
-                print('\t %s(%s)' % (words[act_idx], obj_names))
+                        obj_names[l].append('NULL')
+            print('\t act_type: %s' % self.int2type[act_type])
+            print('\t %s(%s)' % (words[act_idx], ','.join(obj_names[0])))
+            if obj_idxs[1]:
+                print('\t %s(%s)' % (words[act_idx], ','.join(obj_names[1])))
             
-
-            state = self.next_state(words[act_idx], obj_idxs, words)
+            state = self.next_state(words[act_idx], obj_idxs, obj_names)
             sent['acts'].append({'act_idx': act_idx, 'obj_idxs': obj_idxs, 
                                 'state': state, 'state_type': state_type,
                                 'act_type': act_type, 'related_acts': related_acts})
         return sent
         
 
-    def next_state(self, act, obj_idxs, words):
+    def next_state(self, act, obj_idxs, objs):
         #ipdb.set_trace()
         inputs = raw_input('\n\t Input new states: 1: vn1+o 2: vn2+o 3: p(o1, o2) 4: o3 5: p(o1, o3)\n')
         if not inputs:
             return []
         inputs = inputs.strip().split()
         state_type = int(inputs[0])
-        objs = [[words[i] for i in obj_idxs[j]] for j in range(len(obj_idxs))]
+        #objs = [[words[i] for i in obj_idxs[j]] for j in range(len(obj_idxs))]
         # vbn + obj
         if state_type == 1: 
             try:
