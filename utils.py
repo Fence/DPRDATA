@@ -9,7 +9,7 @@ plt.switch_backend('agg') # do not require GUI
 
 class QuitProgram(Exception):
     def __init__(self, message='Quit the program.\n'):
-        Exception.__init__(self)
+        Exception.__init__(self, message)
         self.message = message
 
 
@@ -45,13 +45,17 @@ def get_time():
 
 
 def save_pkl(obj, path):
+    print('Saving file %s ...' % path)
     with open(path, 'w') as f:
         pickle.dump(obj, f)
+    print('Success!\n')
 
 
 def load_pkl(path):
+    print('Loading file %s ...' % path)
     with open(path) as f:
         obj = pickle.load(f)
+        print('Success!\n')
         return obj
 
 

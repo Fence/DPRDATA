@@ -48,7 +48,7 @@ def transform_digits(sent):
         start = ind + 2 if ind >= 0 else 0
         constant = 0.0
     #
-    num = constant + numerator / denominator
+    num = constant + numerator / denominator if denominator > 0 else 0
     sent = sent[: start] + str(num) + sent[end: ]
     return sent
 
@@ -397,6 +397,77 @@ class TextLabeler(object):
             self.save_labeled_data = 'wikihow/labeled_%s_data.pkl' % dom2name[args.domain]
         
 
+    def add_state(self):
+        self.save_labeled_data = 'win2k/refined_win2k_data.pkl'
+        with open(self.save_labeled_data, 'rb') as f:
+            print('Load data from %s...\n' % self.save_labeled_data)
+            last_text, last_sent, data = pickle.load(f)
+            print('last_text: %d\t last_sent: %d\n' % (last_text, last_sent))
+        while True:
+            init = raw_input('Input last text num and sent num\n')
+            if not init:
+                print('No input, program exit!\n')
+            if len(init.split()) == 2:
+                start_text = int(init.split()[0])
+                start_sent = int(init.split()[1])
+                break
+        ipdb.set_trace()
+        break_flag = False
+        num_texts = len(data)
+        for i in range(start_text, num_texts):
+            num_sents = len(data[i])
+            for j in range(start_sent, num_sents):
+                try:
+                    if j < num_sents - 1:
+                        next_sent = data[i][j + 1]['this_sent']
+                    else:
+                        next_sent = []
+                    data[i][j]['next_sent'] = next_sent
+                    print('\nT%d of %d, S%d of %d:' % (i, num_texts, j, num_sents))
+                    words = data[i][j]['last_sent'] + data[i][j]['this_sent'] + data[i][j]['next_sent']
+                    ind = self.print_sent(data[i][j]['last_sent'], 0, 'LAST')
+                    ind = self.print_sent(data[i][j]['this_sent'], ind, 'THIS')
+                    ind = self.print_sent(data[i][j]['next_sent'], ind, 'NEXT')
+
+                    for k in range(len(data[i][j]['acts'])):
+                        act_idx = data[i][j]['acts'][k]['act_idx']
+                        obj_idxs = data[i][j]['acts'][k]['obj_idxs']
+                        act_type = data[i][j]['acts'][k]['act_type']
+                        # map the indices of the objects to the corresponding words
+                        obj_names = []
+                        for l in obj_idxs[0]:
+                            if l >= 0:
+                                obj_names.append(words[l])
+                            else:
+                                obj_names.append('NULL')
+                        obj_names = ','.join(obj_names)
+                        print('\t act_type: %s' % self.int2type[act_type])
+                        print('\t %s(%s)' % (words[act_idx], obj_names))
+                        if obj_idxs[1]:
+                            obj_names = []
+                            for l in obj_idxs[1]:
+                                if l >= 0:
+                                    obj_names.append(words[l])
+                                else:
+                                    obj_names.append('NULL')
+                            obj_names = ','.join(obj_names)
+                            print('\t %s(%s)' % (words[act_idx], obj_names))    
+
+                        # add state transition
+                        state, state_type = self.next_state(words[act_idx], obj_idxs, words)
+                        data[i][j]['acts'][k]['state'] = state
+                        data[i][j]['acts'][k]['state_type'] = state_type
+                except:
+                    break_flag = True
+                    break
+            if break_flag:
+                break
+        
+        with open(self.save_labeled_data, 'wb') as f:
+            pickle.dump([i, j, data], f)
+            print('last_text: %d\t last_sent: %d\n' % (i, j))
+
+
 
     def text_labeling(self):
         # main function for annotating the texts
@@ -449,7 +520,7 @@ class TextLabeler(object):
                     raw_words = [s.split() for s in [last_sent, this_sent, next_sent]]
                     words = sent['last_sent'] + sent['this_sent'] + sent['next_sent']
                     assert len(words) == sum([len(s) for s in raw_words])
-                    print('T%d of %d, S%d of %d:' % (i, self.num_texts, j, num_sents))
+                    print('\nT%d of %d, S%d of %d:' % (i, self.num_texts, j, num_sents))
                     ind = self.print_sent(raw_words[0], 0, 'LAST')
                     ind = self.print_sent(raw_words[1], ind, 'THIS')
                     ind = self.print_sent(raw_words[2], ind, 'NEXT')
@@ -578,14 +649,15 @@ class TextLabeler(object):
             
 
             state = self.next_state(words[act_idx], obj_idxs, words)
-            sent['acts'].append({'act_idx': act_idx, 'obj_idxs': obj_idxs, 'state': state,
+            sent['acts'].append({'act_idx': act_idx, 'obj_idxs': obj_idxs, 
+                                'state': state, 'state_type': state_type,
                                 'act_type': act_type, 'related_acts': related_acts})
         return sent
         
 
     def next_state(self, act, obj_idxs, words):
         #ipdb.set_trace()
-        inputs = raw_input('\n\t Input the new state after the action:\n')
+        inputs = raw_input('\n\t Input new states: 1: vn1+o 2: vn2+o 3: p(o1, o2) 4: o3 5: p(o1, o3)\n')
         if not inputs:
             return []
         inputs = inputs.strip().split()
@@ -602,18 +674,24 @@ class TextLabeler(object):
             state = [[vbn, '_'.join(obj)] for obj in objs if obj]
             for i in range(len(state)):
                 print('\t  %s(%s)' % (state[i][0], state[i][1]))
+        # new vbn + obj
+        elif state_type == 2:
+            vbn = inputs[1] #raw_input('\n\t Input the attribute of the objects: \n').strip()
+            state = [[vbn, '_'.join(obj)] for obj in objs if obj]
+            for i in range(len(state)):
+                print('\t  %s(%s)' % (state[i][0], state[i][1]))
         # preposition + obj1 + obj2
-        elif state_type == 2: 
+        elif state_type == 3: 
             prep, obj2 = inputs[1: ]
             state = [[prep, obj2, '_'.join(obj)] for obj in objs if obj]
             for i in range(len(state)):
                 print('\t  %s(%s, %s)' % (state[i][0], state[i][1], state[i][2]))
         # new objects
-        elif state_type == 3:
+        elif state_type == 4:
             state = [[inputs[1]]]
             print('\t  new obj: %s' % state)
         # new objects + preposition
-        else:
+        else: #state_type == 5:
             prep, obj2, new_obj = inputs[1: ]
             if isinstance(new_obj, list):
                 state = [[prep, obj2, '_'.join(new_obj)]]
@@ -621,7 +699,7 @@ class TextLabeler(object):
                 state = [[prep, obj2, new_obj]]
             for i in range(len(state)):
                 print('\t  new obj: %s(%s, %s)' % (state[i][0], state[i][1], state[i][2]))
-        return state
+        return state, state_type
 
 
 
@@ -650,8 +728,8 @@ if __name__ == '__main__':
     else:
         import en
         model = TextLabeler(args)
-        model.text_labeling()
-
+        #model.text_labeling()
+        model.add_state()
 
 
 
