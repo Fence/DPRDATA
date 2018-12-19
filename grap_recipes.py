@@ -398,7 +398,8 @@ class TextLabeler(object):
         
 
     def add_state(self):
-        self.save_labeled_data = 'win2k/refined_win2k_data.pkl'
+        self.domain = 'cooking'
+        self.save_labeled_data = '%s/refined_%s_data.pkl' % (self.domain, self.domain)
         with open(self.save_labeled_data, 'rb') as f:
             print('Load data from %s...\n' % self.save_labeled_data)
             last_text, last_sent, data = pickle.load(f)
@@ -416,7 +417,8 @@ class TextLabeler(object):
         num_texts = len(data)
         for i in range(start_text, num_texts):
             num_sents = len(data[i])
-            for j in range(start_sent, num_sents):
+            start = start_sent if i == start_text else 0
+            for j in range(start, num_sents):
                 try:
                     if j < num_sents - 1:
                         next_sent = data[i][j + 1]['this_sent']
@@ -642,16 +644,17 @@ class TextLabeler(object):
 
     def next_state(self, act, obj_idxs, objs):
         #ipdb.set_trace()
-        inputs = raw_input('\n\t Input new states: 1: vn1+o 2: vn2+o 3: p(o1, o2) 4: o3 5: p(o1, o3)\n')
+        options = '1: vn1+o  2: vn2+o  3: p(o1, o2)  4: o3  5: p(o2, o3)'
+        inputs = raw_input('\n\t Input new states: %s\n' % options)
         if not inputs:
             return []
         inputs = inputs.strip().split()
         state_type = int(inputs[0])
         #objs = [[words[i] for i in obj_idxs[j]] for j in range(len(obj_idxs))]
-        # vbn + obj
+        # <vbn + obj>
         if state_type == 1: 
             try:
-                vbn = en.verb.past_participle(act)
+                vbn = en.verb.past_participle(act.lower())
             except:
                 vbn = raw_input('\n\t Key Error! Input the past participle of "%s":\n' % act).strip()
                 if vbn in ['ed', 'n', 'd']:
@@ -659,25 +662,33 @@ class TextLabeler(object):
             state = [[vbn, '_'.join(obj)] for obj in objs if obj]
             for i in range(len(state)):
                 print('\t  %s(%s)' % (state[i][0], state[i][1]))
-        # new vbn + obj
+        # <new vbn + obj>
         elif state_type == 2:
             vbn = inputs[1] #raw_input('\n\t Input the attribute of the objects: \n').strip()
             state = [[vbn, '_'.join(obj)] for obj in objs if obj]
             for i in range(len(state)):
                 print('\t  %s(%s)' % (state[i][0], state[i][1]))
-        # preposition + obj1 + obj2
+        # <preposition + obj1 + obj2>
         elif state_type == 3: 
             prep, obj2 = inputs[1: ]
             state = [[prep, obj2, '_'.join(obj)] for obj in objs if obj]
             for i in range(len(state)):
                 print('\t  %s(%s, %s)' % (state[i][0], state[i][1], state[i][2]))
-        # new objects
+        # <new objects>
         elif state_type == 4:
             state = [[inputs[1]]]
             print('\t  new obj: %s' % state)
-        # new objects + preposition
+        # <new objects + preposition> or <vnb + obj + preposition>
         else: #state_type == 5:
-            prep, obj2, new_obj = inputs[1: ]
+            if len(inputs) == 3:
+                prep, obj2 = inputs[1: ]
+                try:
+                    vbn = en.verb.past_participle(act.lower())
+                except:
+                    vbn = raw_input('\n\t Key Error! Input the past participle of "%s":\n' % act).strip()
+                new_obj = [vbn] + objs[0]
+            else:
+                prep, obj2, new_obj = inputs[1: ]
             if isinstance(new_obj, list):
                 state = [[prep, obj2, '_'.join(new_obj)]]
             else:
