@@ -7,6 +7,7 @@ import json
 import pickle
 import argparse
 from tqdm import tqdm
+from utils import save_pkl, load_pkl
 
 
 class QuitProgram(Exception):
@@ -416,9 +417,9 @@ class DataLabeler(object):
         self.find_top_or_text(class_name, texts)
 
 
-    def find_top_or_text(self, class_name, texts='', infile='', topn=-1):
-        if texts: # cope with data of texts 
-            data = texts
+    def find_top_or_text(self, class_name, input_texts='', infile='', outfile='', topn=-1):
+        if input_texts: # cope with data of texts 
+            data = input_texts
             outfile = 'wikihow/%s_%d_words' % (class_name, self.max_words)
         else: # load data from existing files
             data = pickle.load(open(infile, 'rb'))
@@ -436,24 +437,26 @@ class DataLabeler(object):
                         or_dicts[i] += 1
 
         or_list = sorted(or_dicts.items(), key=lambda x:x[1], reverse=True)
-        with open(outfile + '.txt', 'w') as f:
-            if topn <= 0:
-                topn = len(or_list)
-            print('Selecting top %d texts sorted by the number of the word "or"' % topn)
-            texts = []
-            for idx in or_list[: topn]:
-                text = data[idx[0]]['sent']
-                sents = [re.sub(r',|;|:|\.|', '', s) for s in text]
-                texts.append(sents)
-                f.write('Text: %d\n' % idx[0])
-                if 'title' in data[idx[0]]:
-                    f.write('Title: {}\nSteps: \n\t{}\n\n'.format(
-                        data[idx[0]]['title'], '\n\t'.join(text)))
-
+        # with open(outfile + '.txt', 'w') as f:
+        if topn <= 0:
+            topn = len(or_list)
+        print('Selecting top %d texts sorted by the number of the word "or"' % topn)
+        texts = []
+        for idx in or_list[: topn]:
+            text = data[idx[0]]['sent']
+            data[idx[0]]['sent'] = [re.sub(r',|;|:|\.|', '', s) for s in text]
+            texts.append(data[idx[0]])
+            # sents = [re.sub(r',|;|:|\.|', '', s) for s in text]
+            # texts.append(sents)
+                # f.write('Text: %d\n' % idx[0])
+                # if 'title' in data[idx[0]]:
+                #     f.write('Title: {}\nSteps: \n\t{}\n\n'.format(
+                #         data[idx[0]]['title'], '\n\t'.join(text)))
+        
         print('Saving data to %s' % outfile)
         if self.data_type == 'pkl':
             with open(outfile + '.pkl', 'wb') as f:
-                pickle.dump(texts, f, protocol=2)
+                pickle.dump(texts, f)
         else:
             with open(outfile + '.json', 'w') as f:
                 json.dump(texts, f, indent=4, sort_keys=True)
@@ -724,8 +727,10 @@ class DataLabeler(object):
 
 
     def transfer(self):
-        _, __, indata = pickle.load(open('%s/refined_%s_data.pkl'%(self.domain, self.domain),'rb'))
+        #indata = pickle.load(open('%s/refined_%s_data.pkl'%(self.domain, self.domain),'rb'))[-1]
+        indata = load_pkl('wikihow/online_labeled_text.pkl')[-1]
 
+        ipdb.set_trace()
         data = []
         tmp_data = {}
         max_sent_len = 0
@@ -890,8 +895,9 @@ class DataLabeler(object):
         print('\nupper_bound: {}\tlower_bound: {}\nlog history: {}\n'.format(
             upper_bound, lower_bound, log))
 
-        with open('%s/%s_labeled_text_data.pkl'%(self.domain, self.domain), 'wb') as f:
-            pickle.dump(data, f, protocol=2)
+        #filename = '%s/%s_labeled_text_data.pkl'%(self.domain, self.domain)
+        filename = 'wikihow/online_labeled_text_data.pkl'
+        save_pkl(data, filename)
 
 
     def split_sents(self):
@@ -1105,22 +1111,27 @@ if __name__ == '__main__':
 
     start = time.time()
     model = DataLabeler(args)
-    if args.model_type == 'category':
-        print('Loading data ...')
-        data = pickle.load(open('wikihow/wikihow_data.pkl', 'rb'))[-1]
-        # model.split_data_by_category(data)
-        names = ['Food-and-Entertaining', 'Home-and-Garden', 
-                'Cars-%26-Other-Vehicles', 'Computers-and-Electronics']
-        for category in names:
-            model.find_top_or_text_by_category(data, category)
-    else:
-        # call the function according to the function name
-        # includs: transfer(), text_labeling(), split_sents(), 
-        # add_object_type(), add_action_type(), get_sail_data(), split_data_by_category()
-        func = getattr(model, args.model_type, None)
-        if type(func).__name__ != 'NoneType':
-            func()
+    model.transfer()
+    # class_name = 'home_and_garden'
+    # infile = 'wikihow/wikihow_%s_data.pkl' % class_name
+    # outfile = 'wikihow/%s_%d_words_with_title' % (class_name, args.max_words)
+    # model.find_top_or_text(class_name, infile=infile, outfile=outfile)
+    # if args.model_type == 'category':
+    #     print('Loading data ...')
+    #     data = pickle.load(open('wikihow/wikihow_data.pkl', 'rb'))[-1]
+    #     # model.split_data_by_category(data)
+    #     names = ['Food-and-Entertaining', 'Home-and-Garden', 
+    #             'Cars-%26-Other-Vehicles', 'Computers-and-Electronics']
+    #     for category in names:
+    #         model.find_top_or_text_by_category(data, category)
+    # else:
+    #     # call the function according to the function name
+    #     # includs: transfer(), text_labeling(), split_sents(), 
+    #     # add_object_type(), add_action_type(), get_sail_data(), split_data_by_category()
+    #     func = getattr(model, args.model_type, None)
+    #     if type(func).__name__ != 'NoneType':
+    #         func()
 
-    end = time.time()
-    print('Total time cost: %.2fs\n' % (end - start))
+    # end = time.time()
+    # print('Total time cost: %.2fs\n' % (end - start))
 

@@ -1,3 +1,4 @@
+# coding: utf-8
 import re
 import os
 import ipdb
@@ -7,6 +8,32 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from utils import timeit, print_args, QuitProgram
+
+
+def build_state_sequence_training_data(domain):
+    #ipdb.set_trace()
+    data = pickle.load(open('%s/refined_%s_data.pkl' % (domain, domain), 'rb'))[-1]
+    train_data = []
+    state_types = {}
+    for text in data:
+        for sent in text:
+            context = [sent['last_sent'], sent['this_sent'], sent['next_sent']]
+            for act in sent['acts']:
+                act_name = (sent['last_sent'] + sent['this_sent'])[act['act_idx']]
+                next_state = act['state']
+                state_type = act['state_type']
+                a_sample = {'context': context, 'act_name': act_name, 
+                            'next_state': next_state, 'state_type': state_type}
+                train_data.append(a_sample)
+                
+                if state_type in state_types:
+                    state_types[state_type] += 1
+                else:
+                    state_types[state_type] = 1
+    print(len(train_data))
+    print(state_types)
+    #pickle.dump([state_types, train_data], open('%s/state_sequence_data.pkl'%domain, 'wb'))
+    json.dump([state_types, train_data], open('%s/state_sequence_data.json'%domain, 'w'), indent=4)
 
 
 def transform_digits(sent):
@@ -398,7 +425,7 @@ class TextLabeler(object):
         
 
     def add_state(self):
-        self.domain = 'cooking'
+        self.domain = 'wikihow'
         self.save_labeled_data = '%s/refined_%s_data.pkl' % (self.domain, self.domain)
         with open(self.save_labeled_data, 'rb') as f:
             print('Load data from %s...\n' % self.save_labeled_data)
@@ -455,13 +482,16 @@ class TextLabeler(object):
                 except:
                     break_flag = True
                     break
+            # save file after tagged each text
+            with open(self.save_labeled_data, 'wb') as f:
+                pickle.dump([i, j, data], f)
+
             if break_flag:
                 break
         
         with open(self.save_labeled_data, 'wb') as f:
             pickle.dump([i, j, data], f)
             print('last_text: %d\t last_sent: %d\n' % (i, j))
-
 
 
     def text_labeling(self):
@@ -524,6 +554,10 @@ class TextLabeler(object):
                     if len(sents) < num_sents:
                         sents.append({})
                     sents[j] = sent
+
+                # save file after tagged each text
+                with open(self.save_labeled_data, 'wb') as f:
+                    pickle.dump([i, j, data], f)
             
             except Exception as e:
                 print('Error:', e)
@@ -541,7 +575,7 @@ class TextLabeler(object):
         
         # save file
         with open(self.save_labeled_data, 'wb') as f:
-            pickle.dump([i, j, data], f, protocol=2)
+            pickle.dump([i, j, data], f)
             break_flag = True
             print('last_text: %d\t last_sent: %d\n' % (i, j))
 
@@ -644,6 +678,7 @@ class TextLabeler(object):
 
     def next_state(self, act, obj_idxs, objs):
         #ipdb.set_trace()
+        act = act.lower()
         options = '1: vn1+o  2: vn2+o  3: p(o1, o2)  4: o3  5: p(o2, o3)'
         inputs = raw_input('\n\t Input new states: %s\n' % options)
         if not inputs:
@@ -654,7 +689,7 @@ class TextLabeler(object):
         # <vbn + obj>
         if state_type == 1: 
             try:
-                vbn = en.verb.past_participle(act.lower())
+                vbn = en.verb.past_participle(act)
             except:
                 vbn = raw_input('\n\t Key Error! Input the past participle of "%s":\n' % act).strip()
                 if vbn in ['ed', 'n', 'd']:
@@ -680,10 +715,11 @@ class TextLabeler(object):
             print('\t  new obj: %s' % state)
         # <new objects + preposition> or <vnb + obj + preposition>
         else: #state_type == 5:
+            # 既包含动作，又包含介词短语表示状态，如：In a bowl mix flour salt and pepper.
             if len(inputs) == 3:
                 prep, obj2 = inputs[1: ]
                 try:
-                    vbn = en.verb.past_participle(act.lower())
+                    vbn = en.verb.past_participle(act)
                 except:
                     vbn = raw_input('\n\t Key Error! Input the past participle of "%s":\n' % act).strip()
                 new_obj = [vbn] + objs[0]
@@ -701,6 +737,7 @@ class TextLabeler(object):
 
     
 if __name__ == '__main__':
+    # build_state_sequence_training_data('cooking')
     parser = argparse.ArgumentParser()
     parser.add_argument('--domain',         type=str,   default='recipe',       help='')
     parser.add_argument('--model',          type=str,   default='labeling',     help='')
